@@ -340,21 +340,12 @@ const LifeFlowApp = () => {
                 className="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-3 text-sm outline-none focus:border-amber-500"
                 placeholder={getTrans(language, "nameLabel")}
               />
-              <input
-                type="text"
-                value={licenseKey}
-                onChange={(e) => setLicenseKey(e.target.value)}
-                className="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-3 text-sm outline-none focus:border-amber-500"
-                placeholder={getTrans(language, "keyLabel")}
-              />
               <button
                 onClick={() => {
-                  if (licenseKey === "LIFE2025") {
-                    localStorage.setItem("lifeflow_setup", "true");
-                    localStorage.setItem("lifeflow_user", userName);
-                    localStorage.setItem("lifeflow_lang", language);
-                    setIsSetup(true);
-                  } else alert(getTrans(language, "invalid"));
+                  localStorage.setItem("lifeflow_setup", "true");
+                  localStorage.setItem("lifeflow_user", userName);
+                  localStorage.setItem("lifeflow_lang", language);
+                  setIsSetup(true);
                 }}
                 className="w-full bg-amber-500 text-black font-bold py-3 rounded-lg mt-2 hover:bg-amber-400"
               >
