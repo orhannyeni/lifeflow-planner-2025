@@ -91,16 +91,12 @@ const TRANSLATIONS = {
     noon: "Öğle",
     evening: "Akşam",
   },
-  // Diğer diller için İngilizce fallback (yer tasarrufu için kısaltıldı, gerçekte hepsi eklenebilir)
 };
 
-// Yardımcı Fonksiyon: Çeviri Al
 const getTrans = (lang, key) => {
-  // Seçilen dilde varsa döndür, yoksa İngilizce, o da yoksa key'in kendisi
   return TRANSLATIONS[lang]?.[key] || TRANSLATIONS["en"][key] || key;
 };
 
-// --- SABİTLER ---
 const YEARS = [2025, 2026, 2027, 2028, 2029, 2030];
 const MONTHS_TR = [
   "Ocak",
@@ -123,11 +119,12 @@ const LifeFlowApp = () => {
   const [isSetup, setIsSetup] = useState(false);
   const [userName, setUserName] = useState("");
   const [licenseKey, setLicenseKey] = useState("");
-  const [language, setLanguage] = useState("en"); // Başlangıç dili İngilizce
+  const [language, setLanguage] = useState("en");
 
   const [viewMode, setViewMode] = useState("full");
   const [currentView, setCurrentView] = useState("dashboard");
   const [showSettings, setShowSettings] = useState(false);
+  const [autoStart, setAutoStart] = useState(false); // OTOMATİK BAŞLATMA DURUMU
 
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -151,6 +148,8 @@ const LifeFlowApp = () => {
     const savedSetup = localStorage.getItem("lifeflow_setup");
     const savedUser = localStorage.getItem("lifeflow_user");
     const savedLang = localStorage.getItem("lifeflow_lang");
+    const savedAutoStart =
+      localStorage.getItem("lifeflow_autostart") === "true"; // Kayıtlı ayarı çek
 
     if (savedSetup === "true" && savedUser) {
       setUserName(savedUser);
@@ -158,7 +157,8 @@ const LifeFlowApp = () => {
       setIsSetup(true);
     }
 
-    // Verileri Yükle
+    setAutoStart(savedAutoStart); // Durumu güncelle
+
     const loadData = (key, setter) => {
       const data = localStorage.getItem(key);
       if (data) setter(JSON.parse(data));
@@ -167,10 +167,8 @@ const LifeFlowApp = () => {
     loadData("lifeflow_alarms", setAlarms);
     loadData("lifeflow_widgets", setActiveWidgets);
 
-    // Bildirim İzni
     if (Notification.permission !== "granted") Notification.requestPermission();
 
-    // Alarm Kontrolü
     startAlarmCheck();
     return () => clearInterval(alarmIntervalRef.current);
   }, []);
@@ -193,7 +191,7 @@ const LifeFlowApp = () => {
             body: alarm.label || "Zamanı geldi!",
             icon: "/favicon.ico",
           });
-          alarm.active = false; // Tek seferlik çalsın
+          alarm.active = false;
           updateAlarms(currentAlarms);
         }
       });
@@ -239,7 +237,7 @@ const LifeFlowApp = () => {
   const handleSetup = () => {
     if (licenseKey === "LIFE2025") {
       localStorage.setItem("lifeflow_user", userName);
-      localStorage.setItem("lifeflow_lang", language); // Seçilen dili kaydet
+      localStorage.setItem("lifeflow_lang", language);
       localStorage.setItem("lifeflow_setup", "true");
       setIsSetup(true);
     } else {
@@ -250,8 +248,14 @@ const LifeFlowApp = () => {
   // --- PENCERE YÖNETİMİ ---
   const handleClose = () => ipcRenderer && ipcRenderer.send("app-close");
   const handleMinimize = () => ipcRenderer && ipcRenderer.send("app-minimize");
-  const toggleAutoStart = () =>
-    ipcRenderer && ipcRenderer.send("toggle-auto-start", true);
+
+  // DÜZELTİLEN FONKSİYON: AÇ/KAPA (TOGGLE)
+  const toggleAutoStart = () => {
+    const newState = !autoStart;
+    setAutoStart(newState);
+    localStorage.setItem("lifeflow_autostart", newState.toString()); // Ayarı kaydet
+    if (ipcRenderer) ipcRenderer.send("toggle-auto-start", newState); // Electron'a bildir
+  };
 
   const toggleWidget = () => {
     if (viewMode === "full") {
@@ -263,7 +267,7 @@ const LifeFlowApp = () => {
     }
   };
 
-  // --- EKRAN 1: KURULUM (DİL SEÇİMLİ) ---
+  // --- EKRAN 1: KURULUM ---
   if (!isSetup) {
     return (
       <div className="h-screen flex flex-col bg-[#0f172a] text-white font-sans select-none">
@@ -288,9 +292,7 @@ const LifeFlowApp = () => {
               </div>
               <h1 className="text-xl font-bold text-white">LifeFlow</h1>
             </div>
-
             <div className="space-y-4">
-              {/* DİL SEÇİCİ */}
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase">
                   Language / Dil
@@ -311,11 +313,7 @@ const LifeFlowApp = () => {
                     </button>
                   ))}
                 </div>
-                <p className="text-right text-[10px] text-amber-500 mt-1">
-                  {LANGUAGES.find((l) => l.code === language)?.name}
-                </p>
               </div>
-
               <input
                 type="text"
                 value={userName}
@@ -330,11 +328,9 @@ const LifeFlowApp = () => {
                 className="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-3 text-sm outline-none focus:border-amber-500 transition"
                 placeholder={getTrans(language, "keyLabel")}
               />
-
               {error && (
                 <p className="text-red-400 text-xs text-center">{error}</p>
               )}
-
               <button
                 onClick={handleSetup}
                 disabled={!userName || !licenseKey}
@@ -410,7 +406,6 @@ const LifeFlowApp = () => {
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
-            {/* Dil Değiştirme (İçeriden) */}
             <div className="mb-4">
               <label className="text-xs font-bold text-slate-400 block mb-2">
                 Language
@@ -566,11 +561,17 @@ const LifeFlowApp = () => {
             >
               <Minimize className="w-4 h-4" /> {getTrans(language, "widget")}
             </button>
+            {/* DÜZELTİLEN BUTON: Artık renk değiştiriyor */}
             <button
               onClick={toggleAutoStart}
-              className="w-full flex items-center justify-center gap-2 p-2 text-xs text-slate-400 hover:text-green-600 transition"
+              className={`w-full flex items-center justify-center gap-2 p-2 text-xs transition rounded-lg ${
+                autoStart
+                  ? "text-green-600 bg-green-50 border border-green-200"
+                  : "text-slate-400 hover:text-green-600"
+              }`}
             >
-              <Power className="w-3 h-3" /> {getTrans(language, "autoStart")}
+              <Power className="w-3 h-3" />{" "}
+              {autoStart ? "Otomatik: AÇIK" : getTrans(language, "autoStart")}
             </button>
           </div>
         </div>
@@ -876,7 +877,7 @@ const LifeFlowApp = () => {
                       </div>
                     )}
 
-                    {/* SIVI TAKİBİ (DÜZELTİLDİ) */}
+                    {/* SIVI TAKİBİ */}
                     {activeWidgets.includes("water") && (
                       <div className="bg-gradient-to-br from-sky-500 to-blue-600 p-6 rounded-3xl shadow-lg text-white">
                         <h3 className="font-bold text-lg flex items-center mb-6">
