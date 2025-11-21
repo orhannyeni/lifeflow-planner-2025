@@ -8,10 +8,11 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 400, // Widget modu için küçülmeye izin ver
+    minWidth: 400,
     minHeight: 500,
     icon: __dirname + "/favicon.ico",
-    frame: true, // Çerçeve olsun (Kapatma tuşları için)
+    frame: false, // <--- KRİTİK: Windows çerçevesini kaldırdık (Premium görünüm için)
+    transparent: true, // Arka plan şeffaflığına izin ver (Widget için)
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -20,47 +21,45 @@ function createWindow() {
     },
   });
 
-  // Düzeltilmiş Dosya Yolu (Beyaz ekranı önleyen ayar)
   const startUrl = isDev
     ? "http://localhost:3000"
     : `file://${path.join(__dirname, "index.html")}`;
 
   mainWindow.loadURL(startUrl);
 
-  // Menü çubuğunu gizle (Tam uygulama hissi)
-  mainWindow.setMenuBarVisibility(false);
-
-  // Hata panelini kapattık (Ürün bittiği için)
-  // mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools(); // Hata ayıklamak istersen aç
 
   mainWindow.on("closed", () => (mainWindow = null));
 }
 
-// --- ÖZEL KOMUTLAR (Widget ve Otomatik Başlatma) ---
+// --- PENCERE KONTROLLERİ (React'ten gelen emirler) ---
 
-// 1. Widget Moduna Geç (Küçül ve Hep Üstte Kal)
+// 1. Uygulamayı Kapat
+ipcMain.on("app-close", () => {
+  app.quit();
+});
+
+// 2. Uygulamayı Alta İndir
+ipcMain.on("app-minimize", () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+// 3. Widget Moduna Geç (Küçük ve Köşede)
 ipcMain.on("set-widget-mode", () => {
   if (mainWindow) {
-    mainWindow.setSize(400, 600);
-    mainWindow.setAlwaysOnTop(true);
+    mainWindow.setSize(380, 500); // Daha kompakt boyut
+    mainWindow.setAlwaysOnTop(true); // Hep üstte
+    mainWindow.setPosition(50, 50); // Ekranın sol üstüne al (veya kullanıcı taşıyabilir)
   }
 });
 
-// 2. Normal Moda Dön (Büyü)
+// 4. Normal Moda Dön (Büyük)
 ipcMain.on("set-normal-mode", () => {
   if (mainWindow) {
     mainWindow.setSize(1200, 800);
     mainWindow.setAlwaysOnTop(false);
     mainWindow.center();
   }
-});
-
-// 3. Windows ile Başlat
-ipcMain.on("toggle-auto-start", (event, shouldStart) => {
-  app.setLoginItemSettings({
-    openAtLogin: shouldStart,
-    path: app.getPath("exe"),
-  });
 });
 
 app.on("ready", createWindow);
