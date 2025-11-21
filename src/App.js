@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
+  // --- EKSİK İKONLAR EKLENDİ (RefreshCw, Sun, Moon) ---
   Calendar,
   CheckSquare,
   StickyNote,
@@ -19,12 +20,15 @@ import {
   Utensils,
   Activity,
   Globe,
+  RefreshCw,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 const electron = window.require ? window.require("electron") : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 
-// --- DİL AYARLARI ---
+// --- DİL YAPILANDIRMASI ---
 const LANGUAGES = [
   { code: "en", name: "English", flag: "🇺🇸", locale: "en-US" },
   { code: "tr", name: "Türkçe", flag: "🇹🇷", locale: "tr-TR" },
@@ -49,6 +53,8 @@ const TRANSLATIONS = {
     btnStart: "Get Started",
     dashboard: "Dashboard",
     settings: "Settings",
+    languageLabel: "Language",
+    widgets: "Active Modules",
     tasks: "Tasks",
     notes: "Notes",
     water: "Hydration",
@@ -75,6 +81,8 @@ const TRANSLATIONS = {
     btnStart: "Başla",
     dashboard: "Ana Sayfa",
     settings: "Ayarlar",
+    languageLabel: "Dil Seçimi",
+    widgets: "Aktif Modüller",
     tasks: "Görevler",
     notes: "Notlar",
     water: "Sıvı Takibi",
@@ -95,10 +103,12 @@ const TRANSLATIONS = {
   },
 };
 
-const getTrans = (lang, key) =>
-  TRANSLATIONS[lang]?.[key] || TRANSLATIONS["en"][key] || key;
+const getTrans = (lang, key) => {
+  const dict = TRANSLATIONS[lang] || TRANSLATIONS["en"];
+  return dict[key] || TRANSLATIONS["en"][key] || key;
+};
 
-// --- TARİH YARDIMCILARI ---
+// --- TARİH FONKSİYONLARI ---
 const getMonthName = (monthIndex, langCode) => {
   const locale = LANGUAGES.find((l) => l.code === langCode)?.locale || "en-US";
   return new Date(2025, monthIndex, 1).toLocaleDateString(locale, {
@@ -116,7 +126,6 @@ const getDayName = (dayIndex, langCode) => {
 const YEARS = [2025, 2026, 2027, 2028, 2029, 2030];
 
 const LifeFlowApp = () => {
-  // --- STATE ---
   const [isSetup, setIsSetup] = useState(false);
   const [userName, setUserName] = useState("");
   const [licenseKey, setLicenseKey] = useState("");
@@ -143,7 +152,7 @@ const LifeFlowApp = () => {
   const [error, setError] = useState("");
   const alarmIntervalRef = useRef(null);
 
-  // --- BAŞLANGIÇ ---
+  // --- BAŞLANGIÇ VE VERİ YÜKLEME ---
   useEffect(() => {
     const savedSetup = localStorage.getItem("lifeflow_setup");
     const savedUser = localStorage.getItem("lifeflow_user");
@@ -157,8 +166,17 @@ const LifeFlowApp = () => {
 
     const loadData = (key, setter) => {
       const data = localStorage.getItem(key);
-      if (data) setter(JSON.parse(data));
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          if (key === "lifeflow_widgets" && !Array.isArray(parsed)) return;
+          setter(parsed);
+        } catch (e) {
+          console.error("Veri yükleme hatası:", e);
+        }
+      }
     };
+
     loadData("lifeflow_db", setPlannerData);
     loadData("lifeflow_alarms", setAlarms);
     loadData("lifeflow_widgets", setActiveWidgets);
@@ -189,6 +207,10 @@ const LifeFlowApp = () => {
             body: alarm.label || "Alarm!",
             icon: "/favicon.ico",
           });
+          const audio = new Audio(
+            "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+          );
+          audio.play().catch(() => {});
           alarm.active = false;
           updated = true;
         }
@@ -253,7 +275,7 @@ const LifeFlowApp = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm("Reset app?")) {
+    if (window.confirm("Reset app? / Uygulama sıfırlansın mı?")) {
       localStorage.clear();
       window.location.reload();
     }
@@ -269,7 +291,10 @@ const LifeFlowApp = () => {
     }
   };
 
-  // --- EKRAN 1: KURULUM (ENGLISH DEFAULT) ---
+  // Güvenli Widget Listesi
+  const safeActiveWidgets = Array.isArray(activeWidgets) ? activeWidgets : [];
+
+  // --- EKRAN 1: KURULUM ---
   if (!isSetup) {
     return (
       <div className="h-screen flex flex-col bg-[#0f172a] text-white font-sans select-none">
@@ -427,11 +452,10 @@ const LifeFlowApp = () => {
                 <X className="w-5 h-5 text-slate-400 hover:text-red-500" />
               </button>
             </div>
-
             <div className="space-y-6">
               <div>
                 <label className="text-xs font-bold text-slate-400 block mb-2 uppercase">
-                  Language
+                  {getTrans(language, "languageLabel")}
                 </label>
                 <div className="grid grid-cols-6 gap-2">
                   {LANGUAGES.map((lang) => (
@@ -452,7 +476,6 @@ const LifeFlowApp = () => {
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-bold text-slate-400 block mb-2 uppercase">
                   {getTrans(language, "widgets")}
@@ -493,9 +516,9 @@ const LifeFlowApp = () => {
                     <button
                       key={item.id}
                       onClick={() => {
-                        const newWidgets = activeWidgets.includes(item.id)
-                          ? activeWidgets.filter((w) => w !== item.id)
-                          : [...activeWidgets, item.id];
+                        const newWidgets = safeActiveWidgets.includes(item.id)
+                          ? safeActiveWidgets.filter((w) => w !== item.id)
+                          : [...safeActiveWidgets, item.id];
                         setActiveWidgets(newWidgets);
                         localStorage.setItem(
                           "lifeflow_widgets",
@@ -503,7 +526,7 @@ const LifeFlowApp = () => {
                         );
                       }}
                       className={`flex items-center p-2 rounded-lg border text-xs font-medium transition ${
-                        activeWidgets.includes(item.id)
+                        safeActiveWidgets.includes(item.id)
                           ? "border-amber-500 bg-amber-50 text-amber-900"
                           : "border-slate-200 text-slate-400"
                       }`}
@@ -513,7 +536,6 @@ const LifeFlowApp = () => {
                   ))}
                 </div>
               </div>
-
               <button
                 onClick={handleReset}
                 className="w-full flex items-center justify-center gap-2 p-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition"
@@ -755,7 +777,7 @@ const LifeFlowApp = () => {
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* GÖREVLER */}
-                    {activeWidgets.includes("todos") && (
+                    {safeActiveWidgets.includes("todos") && (
                       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
                         <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
                           <CheckSquare className="w-5 h-5 mr-2 text-amber-500" />{" "}
@@ -835,7 +857,7 @@ const LifeFlowApp = () => {
                     )}
 
                     {/* HATIRLATICILAR */}
-                    {activeWidgets.includes("alarms") && (
+                    {safeActiveWidgets.includes("alarms") && (
                       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
                         <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
                           <Bell className="w-5 h-5 mr-2 text-red-500" />{" "}
@@ -852,11 +874,11 @@ const LifeFlowApp = () => {
                               }`}
                             >
                               <div>
-                                <span className="font-bold text-slate-800">
-                                  {alarm.time}{" "}
-                                  <span className="font-normal text-slate-600 text-sm">
-                                    - {alarm.label}
-                                  </span>
+                                <span className="font-bold text-slate-800 text-lg">
+                                  {alarm.time}
+                                </span>
+                                <span className="ml-2 text-sm text-slate-600">
+                                  {alarm.label}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -940,7 +962,7 @@ const LifeFlowApp = () => {
                     )}
 
                     {/* SIVI TAKİBİ */}
-                    {activeWidgets.includes("water") && (
+                    {safeActiveWidgets.includes("water") && (
                       <div className="bg-gradient-to-br from-sky-500 to-blue-600 p-6 rounded-3xl shadow-lg text-white">
                         <div className="flex justify-between items-center mb-6">
                           <h3 className="font-bold text-lg flex items-center">
@@ -981,7 +1003,7 @@ const LifeFlowApp = () => {
                     )}
 
                     {/* YEMEK PLANI */}
-                    {activeWidgets.includes("meals") && (
+                    {safeActiveWidgets.includes("meals") && (
                       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                         <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
                           <Utensils className="w-5 h-5 mr-2 text-green-500" />{" "}
@@ -1021,14 +1043,14 @@ const LifeFlowApp = () => {
                     )}
 
                     {/* NOTLAR */}
-                    {activeWidgets.includes("notes") && (
+                    {safeActiveWidgets.includes("notes") && (
                       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[300px] flex flex-col">
                         <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
                           <StickyNote className="w-5 h-5 mr-2 text-amber-500" />{" "}
                           {getTrans(language, "notes")}
                         </h3>
                         <textarea
-                          className="flex-1 bg-slate-50 rounded-xl p-4 border-none resize-none outline-none focus:ring-2 focus:ring-amber-100"
+                          className="flex-1 bg-slate-50 rounded-xl p-4 border-none resize-none outline-none focus:ring-2 focus:ring-amber-100 transition border-none"
                           value={data.notes}
                           onChange={(e) =>
                             updateDayData(selectedDate, {
