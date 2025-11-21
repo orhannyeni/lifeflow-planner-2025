@@ -2,14 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- Tam Ekran ve Mobil Uyumluluk Ayarları -->
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
     <meta name="theme-color" content="#1a1c23" />
 
-    <!-- iOS (iPad/iPhone) İçin Özel Ayarlar (Adres Çubuğunu Gizler) -->
+    <!-- iOS (iPad/iPhone) İÇİN KESİN KOMUTLAR -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
@@ -17,12 +16,14 @@
     />
     <meta name="apple-mobile-web-app-title" content="LifeFlow" />
 
-    <!-- Manifest Dosyasını Bağla (Android İçin) -->
-    <link rel="manifest" href="/manifest.json" />
+    <!-- Android ve Diğerleri İçin -->
+    <meta name="mobile-web-app-capable" content="yes" />
 
-    <title>LifeFlow Planner</title>
+    <!-- Versiyonlu Manifest (Cache Temizlemek İçin ?v=2 eklendi) -->
+    <link rel="manifest" href="/manifest.json?v=2" />
 
-    <!-- Tasarım Motoru (Tailwind CSS) - EKRANIN BOZUK GÖRÜNMEMESİ İÇİN ŞART -->
+    <title>LifeFlow Planner 2025</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body>
