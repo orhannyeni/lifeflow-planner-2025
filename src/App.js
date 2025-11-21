@@ -27,7 +27,7 @@ import {
   Moon,
 } from "lucide-react";
 
-// --- ÇEVİRİLER (11 DİL - FULL) ---
+// --- ÇEVİRİLER (11 DİL) ---
 const TRANSLATIONS = {
   en: {
     appName: "LifeFlow",
@@ -825,7 +825,7 @@ const LifeFlowApp = () => {
         isDark ? "bg-[#1a1c23] text-gray-200" : "bg-[#f8fafc] text-slate-800"
       }`}
     >
-      {/* SETTINGS MODAL */}
+      {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div
@@ -942,9 +942,9 @@ const LifeFlowApp = () => {
         </div>
       )}
 
-      {/* SIDEBAR (AYLAR BURAYA EKLENDİ) */}
+      {/* Sidebar (AYLAR BURAYA EKLENDİ) */}
       <div
-        className={`hidden md:flex flex-col w-24 border-r items-center py-8 z-20 ${
+        className={`hidden md:flex flex-col w-24 border-r items-center py-8 z-20 transition-colors duration-500 ${
           isDark ? "bg-[#242731] border-gray-800" : "bg-white border-gray-200"
         }`}
       >
@@ -993,10 +993,10 @@ const LifeFlowApp = () => {
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
+      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <header
-          className={`h-20 px-8 flex items-center justify-between border-b backdrop-blur z-10 ${
+          className={`h-20 px-8 flex items-center justify-between border-b backdrop-blur z-10 transition-colors duration-500 ${
             isDark
               ? "bg-[#1a1c23]/80 border-gray-800"
               : "bg-white/80 border-gray-200"
@@ -1288,7 +1288,10 @@ const LifeFlowApp = () => {
                               placeholder={t.placeholders.task}
                               className="w-full bg-transparent border rounded-xl py-2 pl-10"
                               onKeyDown={(e) => {
-                                if (e.key === "Enter" && e.target.value) {
+                                if (
+                                  e.key === "Enter" &&
+                                  e.target.value.trim()
+                                ) {
                                   updateDayData(selectedDate, {
                                     todos: [
                                       ...data.todos,
