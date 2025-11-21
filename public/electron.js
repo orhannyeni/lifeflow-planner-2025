@@ -1,18 +1,23 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const path = require("path");
 const isDev = require("electron-is-dev");
 
 let mainWindow;
+let widgetPosition = "none"; // 'left' | 'right' | 'none'
 
 function createWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 400,
-    minHeight: 500,
+    minWidth: 50, // Widget kapandığında çok küçülmesine izin ver
+    minHeight: 50,
     icon: __dirname + "/favicon.ico",
-    frame: false, // <--- KRİTİK: Windows çerçevesini kaldırdık (Premium görünüm için)
-    transparent: true, // Arka plan şeffaflığına izin ver (Widget için)
+    frame: false, // Çerçevesiz (Özel tasarım için)
+    transparent: true, // Şeffaf arka plan (Widget için)
+    alwaysOnTop: false,
+    skipTaskbar: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -26,48 +31,89 @@ function createWindow() {
     : `file://${path.join(__dirname, "index.html")}`;
 
   mainWindow.loadURL(startUrl);
-
-  // mainWindow.webContents.openDevTools(); // Hata ayıklamak istersen aç
+  mainWindow.setMenuBarVisibility(false);
+  // mainWindow.webContents.openDevTools(); // Hata ayıklamak için açılabilir
 
   mainWindow.on("closed", () => (mainWindow = null));
 }
 
-// --- PENCERE KONTROLLERİ (React'ten gelen emirler) ---
+// --- GÜÇLENDİRİLMİŞ PENCERE KONTROLLERİ ---
 
-// 1. Uygulamayı Kapat
-ipcMain.on("app-close", () => {
-  app.quit();
-});
+ipcMain.on("app-close", () => app.quit());
+ipcMain.on("app-minimize", () => mainWindow && mainWindow.minimize());
 
-// 2. Uygulamayı Alta İndir
-ipcMain.on("app-minimize", () => {
-  if (mainWindow) mainWindow.minimize();
-});
-
-// 3. Widget Moduna Geç (Küçük ve Köşede)
-ipcMain.on("set-widget-mode", () => {
-  if (mainWindow) {
-    mainWindow.setSize(380, 500); // Daha kompakt boyut
-    mainWindow.setAlwaysOnTop(true); // Hep üstte
-    mainWindow.setPosition(50, 50); // Ekranın sol üstüne al (veya kullanıcı taşıyabilir)
-  }
-});
-
-// 4. Normal Moda Dön (Büyük)
+// 1. NORMAL MOD (Ana Ekran)
 ipcMain.on("set-normal-mode", () => {
-  if (mainWindow) {
-    mainWindow.setSize(1200, 800);
-    mainWindow.setAlwaysOnTop(false);
-    mainWindow.center();
+  if (!mainWindow) return;
+  widgetPosition = "none";
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.setSize(1200, 800);
+  mainWindow.center();
+  mainWindow.setOpacity(1.0);
+  mainWindow.setSkipTaskbar(false); // Görev çubuğunda göster
+});
+
+// 2. WIDGET MODU (Hayalet Mod Başlatma)
+ipcMain.on("set-widget-mode", (event, side) => {
+  if (!mainWindow) return;
+
+  widgetPosition = side || "right"; // Varsayılan sağ
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+
+  mainWindow.setAlwaysOnTop(true, "screen-saver"); // En üstte kalsın
+  mainWindow.setSkipTaskbar(true); // Görev çubuğunda yer kaplamasın (daha temiz görünüm)
+
+  // Başlangıçta açık widget boyutu
+  const w = 320;
+  const h = 500;
+  const y = Math.floor((height - h) / 2);
+  const x = widgetPosition === "right" ? width - w : 0;
+
+  mainWindow.setSize(w, h);
+  mainWindow.setPosition(x, y);
+});
+
+// 3. HOVER EFEKTLERİ (React'ten Tetiklenir - Fare Gelince/Gidince)
+ipcMain.on("widget-hover", (event, isHovering) => {
+  if (!mainWindow || widgetPosition === "none") return;
+
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const expandedW = 320; // Açık genişlik
+  const collapsedW = 60; // Kapalı (sadece ikon) genişliği
+  const h = 500;
+  const y = Math.floor((height - h) / 2);
+
+  if (isHovering) {
+    // GENİŞLE (Mouse Üstünde)
+    const x = widgetPosition === "right" ? width - expandedW : 0;
+    mainWindow.setSize(expandedW, h);
+    mainWindow.setPosition(x, y);
+    mainWindow.setOpacity(1.0); // Tam görünür
+  } else {
+    // DARAL / GİZLEN (Mouse Gitti)
+    const x = widgetPosition === "right" ? width - collapsedW : 0;
+    mainWindow.setSize(collapsedW, h);
+    mainWindow.setPosition(x, y);
+    mainWindow.setOpacity(0.8); // Hafif saydam (Rahatsız etmesin)
   }
+});
+
+// 4. OTOMATİK BAŞLATMA
+ipcMain.on("toggle-auto-start", (event, shouldStart) => {
+  app.setLoginItemSettings({
+    openAtLogin: shouldStart,
+    path: app.getPath("exe"),
+    args: [
+      "--process-start-args",
+      `"--hidden"`, // İstenirse gizli başlatılabilir
+    ],
+  });
 });
 
 app.on("ready", createWindow);
-
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
