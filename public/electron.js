@@ -5,54 +5,57 @@ const isDev = require("electron-is-dev");
 let mainWindow;
 
 function createWindow() {
-  // Ana Pencere Ayarları
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    minWidth: 400, // Widget modu için küçülmeye izin ver
+    minHeight: 500,
     icon: __dirname + "/favicon.ico",
     frame: true, // Çerçeve olsun (Kapatma tuşları için)
     webPreferences: {
-      nodeIntegration: true, // React içinden Electron komutlarını kullanmak için
+      nodeIntegration: true,
       contextIsolation: false,
       enableRemoteModule: true,
+      webSecurity: false,
     },
   });
 
-  // Uygulamayı Yükle
-  mainWindow.loadURL(
-    isDev
-      ? "http://localhost:3000"
-      : `file://${path.join(__dirname, "../build/index.html")}`
-  );
+  // Düzeltilmiş Dosya Yolu (Beyaz ekranı önleyen ayar)
+  const startUrl = isDev
+    ? "http://localhost:3000"
+    : `file://${path.join(__dirname, "index.html")}`;
 
+  mainWindow.loadURL(startUrl);
+
+  // Menü çubuğunu gizle (Tam uygulama hissi)
   mainWindow.setMenuBarVisibility(false);
+
+  // Hata panelini kapattık (Ürün bittiği için)
+  // mainWindow.webContents.openDevTools();
 
   mainWindow.on("closed", () => (mainWindow = null));
 }
 
-// --- IPC OLAYLARI (React ile İletişim) ---
+// --- ÖZEL KOMUTLAR (Widget ve Otomatik Başlatma) ---
 
-// 1. Widget Moduna Geçiş
+// 1. Widget Moduna Geç (Küçül ve Hep Üstte Kal)
 ipcMain.on("set-widget-mode", () => {
   if (mainWindow) {
-    mainWindow.setSize(400, 500); // Küçük widget boyutu
-    mainWindow.setAlwaysOnTop(true); // Hep üstte kalsın
-    // Ekranın sağ altına konumlandır (Opsiyonel, şimdilik ortada kalsın veya son konum)
+    mainWindow.setSize(400, 600);
+    mainWindow.setAlwaysOnTop(true);
   }
 });
 
-// 2. Normal Moda Dönüş
+// 2. Normal Moda Dön (Büyü)
 ipcMain.on("set-normal-mode", () => {
   if (mainWindow) {
-    mainWindow.setSize(1200, 800); // Geniş ekran
-    mainWindow.setAlwaysOnTop(false); // Üstte kalma zorunluluğunu kaldır
-    mainWindow.center(); // Ortala
+    mainWindow.setSize(1200, 800);
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.center();
   }
 });
 
-// 3. Windows Başlangıcında Otomatik Çalışma Ayarı
+// 3. Windows ile Başlat
 ipcMain.on("toggle-auto-start", (event, shouldStart) => {
   app.setLoginItemSettings({
     openAtLogin: shouldStart,
@@ -63,13 +66,9 @@ ipcMain.on("toggle-auto-start", (event, shouldStart) => {
 app.on("ready", createWindow);
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  if (process.platform !== "darwin") app.quit();
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
