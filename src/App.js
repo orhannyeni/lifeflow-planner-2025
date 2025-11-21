@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Calendar,
   CheckSquare,
@@ -13,17 +13,19 @@ import {
   Layout,
   Settings,
   ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
   Home,
   RefreshCw,
+  Bell,
+  Droplets,
+  Utensils,
+  Activity,
+  Clock,
 } from "lucide-react";
 
-// Electron Bağlantısı (Hata vermemesi için kontrol ekli)
 const electron = window.require ? window.require("electron") : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 
-// --- SABİTLER VE ÇEVİRİLER ---
+// --- SABİTLER ---
 const YEARS = [2025, 2026, 2027, 2028, 2029, 2030];
 const MONTHS = [
   "Ocak",
@@ -47,6 +49,8 @@ const MOTIVATION = [
   "Küçük adımlar, büyük zaferlere götürür.",
   "Disiplin, özgürlüğün anahtarıdır.",
   "Sahne senin, bugünü yönet!",
+  "Ertelemek yerine harekete geç.",
+  "Kendine inan, başaracaksın.",
 ];
 
 const LifeFlowApp = () => {
@@ -55,21 +59,36 @@ const LifeFlowApp = () => {
   const [userName, setUserName] = useState("");
   const [licenseKey, setLicenseKey] = useState("");
 
-  // Görünüm State'leri
-  const [viewMode, setViewMode] = useState("full"); // 'full' | 'widget'
-  const [currentView, setCurrentView] = useState("dashboard"); // 'dashboard' | 'month' | 'day'
+  // Görünüm
+  const [viewMode, setViewMode] = useState("full");
+  const [currentView, setCurrentView] = useState("dashboard");
+  const [showSettings, setShowSettings] = useState(false);
 
-  // Tarih State'leri
+  // Tarih
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [selectedDate, setSelectedDate] = useState(null); // "2025-1-15" formatında
+  const [selectedDate, setSelectedDate] = useState(null);
 
-  // Veri State'leri
-  const [plannerData, setPlannerData] = useState({}); // Tüm veritabanı { "2025-1-15": {todos:[], notes:""} }
+  // Veriler
+  const [plannerData, setPlannerData] = useState({});
+  const [alarms, setAlarms] = useState([]); // Alarm Listesi: [{id, time: "14:30", label: "Toplantı", active: true}]
+
+  // Ayarlar (Hangi modüller açık?)
+  const [activeWidgets, setActiveWidgets] = useState([
+    "todos",
+    "notes",
+    "water",
+    "meals",
+    "alarms",
+  ]);
+
   const [quote, setQuote] = useState("");
   const [error, setError] = useState("");
 
-  // --- BAŞLANGIÇ ---
+  // Alarm Kontrolü için Interval Referansı
+  const alarmIntervalRef = useRef(null);
+
+  // --- BAŞLANGIÇ VE VERİ YÜKLEME ---
   useEffect(() => {
     const savedName = localStorage.getItem("lifeflow_user");
     const savedSetup = localStorage.getItem("lifeflow_setup");
@@ -81,26 +100,96 @@ const LifeFlowApp = () => {
     }
 
     const savedData = localStorage.getItem("lifeflow_db");
-    if (savedData) {
-      setPlannerData(JSON.parse(savedData));
+    if (savedData) setPlannerData(JSON.parse(savedData));
+
+    const savedAlarms = localStorage.getItem("lifeflow_alarms");
+    if (savedAlarms) setAlarms(JSON.parse(savedAlarms));
+
+    const savedWidgets = localStorage.getItem("lifeflow_widgets");
+    if (savedWidgets) setActiveWidgets(JSON.parse(savedWidgets));
+
+    // Bildirim İzni İste
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission();
     }
+
+    // Alarm Kontrol Mekanizmasını Başlat
+    startAlarmCheck();
+
+    return () => clearInterval(alarmIntervalRef.current);
   }, []);
+
+  // --- ALARM SİSTEMİ ---
+  const startAlarmCheck = () => {
+    // Her 30 saniyede bir kontrol et
+    alarmIntervalRef.current = setInterval(() => {
+      const now = new Date();
+      const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now
+        .getMinutes()
+        .toString()
+        .padStart(2, "0")}`;
+
+      // State içindeki alarmları kontrol et (Closure sorununu aşmak için fonksiyonel update veya ref kullanmak gerekebilir ama basitlik için localStorage okuyoruz veya state'e güveniyoruz)
+      // React state'i interval içinde bayatlayabilir, bu yüzden localStorage'dan en günceli okumak daha garantidir.
+      const currentAlarms = JSON.parse(
+        localStorage.getItem("lifeflow_alarms") || "[]"
+      );
+
+      currentAlarms.forEach((alarm) => {
+        if (
+          alarm.active &&
+          alarm.time === currentTime &&
+          !alarm.triggeredToday
+        ) {
+          // Bildirim Gönder
+          new Notification("LifeFlow Hatırlatıcı", {
+            body: alarm.label || "Zamanı geldi!",
+            icon: "/favicon.ico",
+          });
+
+          // Alarmı "bugün çaldı" olarak işaretle (Sürekli çalmasın diye - Basit mantık: alarmı kapatıyoruz)
+          // Gelişmiş versiyonda tarih kontrolü yapılabilir. Şimdilik tek seferlik alarm gibi davranalım.
+          alarm.active = false;
+          updateAlarms(currentAlarms);
+        }
+      });
+    }, 10000); // 10 saniyede bir kontrol
+  };
+
+  const updateAlarms = (newAlarms) => {
+    setAlarms(newAlarms);
+    localStorage.setItem("lifeflow_alarms", JSON.stringify(newAlarms));
+  };
+
+  const addAlarm = (time, label) => {
+    const newAlarm = { id: Date.now(), time, label, active: true };
+    const newList = [...alarms, newAlarm];
+    updateAlarms(newList);
+  };
+
+  const deleteAlarm = (id) => {
+    const newList = alarms.filter((a) => a.id !== id);
+    updateAlarms(newList);
+  };
 
   // --- VERİ YÖNETİMİ ---
   const saveData = (newData) => {
     setPlannerData(newData);
-    if (isSetup) {
-      localStorage.setItem("lifeflow_db", JSON.stringify(newData));
-    }
+    if (isSetup) localStorage.setItem("lifeflow_db", JSON.stringify(newData));
   };
 
-  // Seçili günün verisini getir (Yoksa boş şablon oluştur)
   const getDayData = (dateKey) => {
-    // Eğer dateKey yoksa (örneğin Widget modunda bugün) bugünü baz al
     const key =
       dateKey ||
       `${new Date().getFullYear()}-${new Date().getMonth()}-${new Date().getDate()}`;
-    return plannerData[key] || { todos: [], notes: "" };
+    return (
+      plannerData[key] || {
+        todos: [],
+        notes: "",
+        water: 0,
+        meals: { breakfast: "", lunch: "", dinner: "" },
+      }
+    );
   };
 
   const updateDayData = (dateKey, data) => {
@@ -112,13 +201,11 @@ const LifeFlowApp = () => {
     saveData({ ...plannerData, [key]: updated });
   };
 
-  // --- TAKVİM MANTIĞI ---
+  // --- TAKVİM ---
   const getCalendarGrid = (year, month) => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
-    // Pazar(0) -> 6, Pzt(1) -> 0 düzenlemesi (Pazartesi başlangıçlı takvim için)
     const adjustedStartDay = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
-
     const grid = [];
     for (let i = 0; i < adjustedStartDay; i++) grid.push(null);
     for (let i = 1; i <= daysInMonth; i++) grid.push(i);
@@ -149,26 +236,14 @@ const LifeFlowApp = () => {
       setIsSetup(true);
       setQuote(MOTIVATION[Math.floor(Math.random() * MOTIVATION.length)]);
     } else {
-      setError("Invalid License Key");
+      setError("Geçersiz Lisans Kodu");
     }
   };
 
-  const addTodo = (e, dateKey) => {
-    if (e.key === "Enter" && e.target.value.trim()) {
-      const currentData = getDayData(dateKey);
-      const newTodos = [
-        ...currentData.todos,
-        { id: Date.now(), text: e.target.value, completed: false },
-      ];
-      updateDayData(dateKey, { todos: newTodos });
-      e.target.value = "";
-    }
-  };
-
-  // --- 1. KURULUM EKRANI (İngilizce Başlar) ---
+  // --- EKRAN 1: KURULUM (İngilizce) ---
   if (!isSetup) {
     return (
-      <div className="h-screen flex flex-col bg-[#0f172a] text-white selection:bg-amber-500 selection:text-black">
+      <div className="h-screen flex flex-col bg-[#0f172a] text-white selection:bg-amber-500 selection:text-black font-sans">
         <div
           className="h-8 flex justify-end items-center px-4 bg-[#1e293b] border-b border-slate-700"
           style={{ WebkitAppRegion: "drag" }}
@@ -225,14 +300,13 @@ const LifeFlowApp = () => {
     );
   }
 
-  // --- 2. WIDGET MODU (Kompakt) ---
+  // --- EKRAN 2: WIDGET MODU ---
   if (viewMode === "widget") {
-    // Widget modu her zaman "Bugün"ün verisini gösterir
     const todayKey = `${new Date().getFullYear()}-${new Date().getMonth()}-${new Date().getDate()}`;
     const todayData = getDayData(todayKey);
 
     return (
-      <div className="h-screen flex flex-col bg-[#0f172a]/95 text-white border border-amber-500/30 rounded-xl overflow-hidden">
+      <div className="h-screen flex flex-col bg-[#0f172a]/95 text-white border border-amber-500/30 rounded-xl overflow-hidden font-sans">
         <div
           className="h-8 bg-amber-500/10 flex justify-between items-center px-3 cursor-move"
           style={{ WebkitAppRegion: "drag" }}
@@ -279,9 +353,56 @@ const LifeFlowApp = () => {
     );
   }
 
-  // --- 3. NORMAL MOD (Ana Ekran) ---
+  // --- EKRAN 3: NORMAL MOD ---
   return (
     <div className="flex flex-col h-screen bg-[#f8fafc] text-slate-800 font-sans overflow-hidden border border-slate-300">
+      {/* AYARLAR MODALI */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+          <div className="bg-white w-96 rounded-2xl shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-lg">Görünüm Ayarları</h3>
+              <button onClick={() => setShowSettings(false)}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Ana ekranda görmek istediğiniz modülleri seçin:
+            </p>
+            <div className="space-y-2">
+              {[
+                { id: "water", label: "Sıvı Takibi", icon: Droplets },
+                { id: "meals", label: "Yemek Planı", icon: Utensils },
+                { id: "alarms", label: "Hatırlatıcılar", icon: Bell },
+                { id: "todos", label: "Görevler", icon: CheckSquare },
+                { id: "notes", label: "Notlar", icon: StickyNote },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    const newWidgets = activeWidgets.includes(item.id)
+                      ? activeWidgets.filter((w) => w !== item.id)
+                      : [...activeWidgets, item.id];
+                    setActiveWidgets(newWidgets);
+                    localStorage.setItem(
+                      "lifeflow_widgets",
+                      JSON.stringify(newWidgets)
+                    );
+                  }}
+                  className={`w-full flex items-center p-3 rounded-xl border transition ${
+                    activeWidgets.includes(item.id)
+                      ? "border-amber-500 bg-amber-50 text-amber-800"
+                      : "border-slate-200 text-slate-400"
+                  }`}
+                >
+                  <item.icon className="w-4 h-4 mr-3" /> {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PENCERE ÇUBUĞU */}
       <div
         className="h-8 bg-white flex justify-between items-center px-4 border-b border-slate-200"
@@ -325,10 +446,16 @@ const LifeFlowApp = () => {
                   : "hover:bg-slate-50 text-slate-600"
               }`}
             >
-              <Layout className="w-4 h-4" /> Yıllık Genel Bakış
+              <Home className="w-4 h-4" /> Ana Sayfa
             </button>
-            {/* Hızlı Yıl Seçici */}
-            <div className="px-3 py-2">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl font-medium text-slate-600 hover:bg-slate-50 transition"
+            >
+              <Settings className="w-4 h-4" /> Ayarlar
+            </button>
+
+            <div className="px-3 py-2 mt-4 border-t border-slate-100 pt-4">
               <label className="text-[10px] font-bold text-slate-400 uppercase">
                 Aktif Yıl
               </label>
@@ -369,16 +496,23 @@ const LifeFlowApp = () => {
             <div className="flex items-center gap-4">
               {currentView !== "dashboard" && (
                 <button
-                  onClick={() =>
-                    setCurrentView(
-                      currentView === "day" ? "month" : "dashboard"
-                    )
-                  }
+                  onClick={() => setCurrentView("dashboard")}
                   className="p-2 hover:bg-slate-200 rounded-full transition"
+                  title="Ana Sayfaya Dön"
+                >
+                  <Home className="w-5 h-5 text-slate-600" />
+                </button>
+              )}
+              {currentView === "day" && (
+                <button
+                  onClick={() => setCurrentView("month")}
+                  className="p-2 hover:bg-slate-200 rounded-full transition"
+                  title="Takvime Dön"
                 >
                   <ArrowLeft className="w-5 h-5 text-slate-600" />
                 </button>
               )}
+
               <div>
                 <h1 className="text-2xl font-bold text-slate-800">
                   {currentView === "dashboard"
@@ -405,7 +539,7 @@ const LifeFlowApp = () => {
           </header>
 
           <main className="flex-1 overflow-y-auto p-8">
-            {/* 1. DASHBOARD (Yıllık Görünüm) */}
+            {/* 1. DASHBOARD (Yıllık) */}
             {currentView === "dashboard" && (
               <div className="grid grid-cols-3 md:grid-cols-4 gap-4">
                 {MONTHS.map((m, idx) => (
@@ -426,7 +560,7 @@ const LifeFlowApp = () => {
               </div>
             )}
 
-            {/* 2. AY GÖRÜNÜMÜ (Takvim Izgarası) */}
+            {/* 2. AY GÖRÜNÜMÜ */}
             {currentView === "month" && (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
                 <div className="grid grid-cols-7 mb-4">
@@ -449,7 +583,6 @@ const LifeFlowApp = () => {
                     const isToday =
                       new Date().toDateString() ===
                       new Date(currentYear, currentMonth, day).toDateString();
-
                     return (
                       <button
                         key={i}
@@ -457,13 +590,11 @@ const LifeFlowApp = () => {
                           setSelectedDate(dateKey);
                           setCurrentView("day");
                         }}
-                        className={`aspect-square rounded-xl border flex flex-col justify-between p-3 transition hover:shadow-md text-left
-                                  ${
-                                    isToday
-                                      ? "border-amber-500 bg-amber-50"
-                                      : "border-slate-100 hover:border-amber-300"
-                                  }
-                               `}
+                        className={`aspect-square rounded-xl border flex flex-col justify-between p-3 transition hover:shadow-md text-left ${
+                          isToday
+                            ? "border-amber-500 bg-amber-50"
+                            : "border-slate-100 hover:border-amber-300"
+                        }`}
                       >
                         <span
                           className={`text-lg font-bold ${
@@ -484,108 +615,248 @@ const LifeFlowApp = () => {
               </div>
             )}
 
-            {/* 3. GÜN DETAYI (Görevler ve Notlar) */}
+            {/* 3. GÜN DETAYI (MODÜLLER) */}
             {currentView === "day" &&
               selectedDate &&
               (() => {
                 const data = getDayData(selectedDate);
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Görevler */}
-                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[500px]">
-                      <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-bold text-lg flex items-center text-slate-700">
+                    {/* GÖREVLER */}
+                    {activeWidgets.includes("todos") && (
+                      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+                        <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
                           <CheckSquare className="w-5 h-5 mr-2 text-amber-500" />{" "}
                           Görevler
                         </h3>
-                        <span className="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-1 rounded-md">
-                          {data.todos.filter((t) => t.completed).length}/
-                          {data.todos.length}
-                        </span>
-                      </div>
-                      <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                        {data.todos.length === 0 && (
-                          <p className="text-center text-slate-400 mt-10 text-sm">
-                            Bugün için plan yok.
-                          </p>
-                        )}
-                        {data.todos.map((t) => (
-                          <div
-                            key={t.id}
-                            className="group flex items-center p-3 bg-slate-50 border border-slate-100 rounded-xl hover:border-amber-300 transition"
-                          >
-                            <button
-                              onClick={() => {
-                                const newTodos = data.todos.map((x) =>
-                                  x.id === t.id
-                                    ? { ...x, completed: !x.completed }
-                                    : x
-                                );
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                          {data.todos.map((t) => (
+                            <div
+                              key={t.id}
+                              className="flex items-center p-3 bg-slate-50 border rounded-xl"
+                            >
+                              <button
+                                onClick={() =>
+                                  updateDayData(selectedDate, {
+                                    todos: data.todos.map((x) =>
+                                      x.id === t.id
+                                        ? { ...x, completed: !x.completed }
+                                        : x
+                                    ),
+                                  })
+                                }
+                                className={`w-5 h-5 border rounded mr-3 flex items-center justify-center ${
+                                  t.completed ? "bg-amber-500" : "bg-white"
+                                }`}
+                              >
+                                {t.completed && (
+                                  <CheckSquare className="w-3 h-3 text-white" />
+                                )}
+                              </button>
+                              <span
+                                className={`flex-1 ${
+                                  t.completed
+                                    ? "line-through text-slate-400"
+                                    : ""
+                                }`}
+                              >
+                                {t.text}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  updateDayData(selectedDate, {
+                                    todos: data.todos.filter(
+                                      (x) => x.id !== t.id
+                                    ),
+                                  })
+                                }
+                              >
+                                <Trash2 className="w-4 h-4 text-red-400" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 relative">
+                          <PlusCircle className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+                          <input
+                            type="text"
+                            className="w-full bg-slate-50 border rounded-xl py-3 pl-10 outline-none focus:border-amber-500"
+                            placeholder="Görev ekle..."
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && e.target.value.trim()) {
                                 updateDayData(selectedDate, {
-                                  todos: newTodos,
+                                  todos: [
+                                    ...data.todos,
+                                    {
+                                      id: Date.now(),
+                                      text: e.target.value,
+                                      completed: false,
+                                    },
+                                  ],
                                 });
-                              }}
-                              className={`w-5 h-5 rounded border flex items-center justify-center mr-3 transition ${
-                                t.completed
-                                  ? "bg-amber-500 border-amber-500"
-                                  : "bg-white border-slate-300"
-                              }`}
-                            >
-                              {t.completed && (
-                                <CheckSquare className="w-3 h-3 text-white" />
-                              )}
-                            </button>
-                            <span
-                              className={`flex-1 ${
-                                t.completed
-                                  ? "line-through text-slate-400"
-                                  : "text-slate-700"
-                              }`}
-                            >
-                              {t.text}
-                            </span>
-                            <button
-                              onClick={() => {
-                                const newTodos = data.todos.filter(
-                                  (x) => x.id !== t.id
-                                );
-                                updateDayData(selectedDate, {
-                                  todos: newTodos,
-                                });
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4 text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100" />
-                            </button>
-                          </div>
-                        ))}
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                        </div>
                       </div>
-                      <div className="mt-4 relative">
-                        <PlusCircle className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
-                        <input
-                          type="text"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 outline-none focus:border-amber-500 transition"
-                          placeholder="Yeni görev..."
-                          onKeyDown={(e) => addTodo(e, selectedDate)}
+                    )}
+
+                    {/* NOTLAR */}
+                    {activeWidgets.includes("notes") && (
+                      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+                        <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
+                          <StickyNote className="w-5 h-5 mr-2 text-amber-500" />{" "}
+                          Notlar
+                        </h3>
+                        <textarea
+                          className="flex-1 bg-slate-50 rounded-xl p-4 border-none resize-none outline-none focus:ring-2 focus:ring-amber-100"
+                          value={data.notes}
+                          onChange={(e) =>
+                            updateDayData(selectedDate, {
+                              notes: e.target.value,
+                            })
+                          }
+                          placeholder="Notlarını buraya yaz..."
                         />
                       </div>
-                    </div>
+                    )}
 
-                    {/* Notlar */}
-                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[500px] relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 to-orange-600"></div>
-                      <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
-                        <StickyNote className="w-5 h-5 mr-2 text-amber-500" />{" "}
-                        Günlük Notlar
-                      </h3>
-                      <textarea
-                        className="flex-1 bg-slate-50 rounded-xl p-4 text-slate-600 leading-relaxed resize-none outline-none focus:ring-2 focus:ring-amber-100 transition border-none"
-                        placeholder="Buraya not al..."
-                        value={data.notes}
-                        onChange={(e) =>
-                          updateDayData(selectedDate, { notes: e.target.value })
-                        }
-                      />
-                    </div>
+                    {/* ALARMLAR / HATIRLATICILAR */}
+                    {activeWidgets.includes("alarms") && (
+                      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[300px] flex flex-col">
+                        <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
+                          <Bell className="w-5 h-5 mr-2 text-red-500" />{" "}
+                          Hatırlatıcılar
+                        </h3>
+                        <div className="flex-1 overflow-y-auto space-y-2">
+                          {alarms.map((alarm) => (
+                            <div
+                              key={alarm.id}
+                              className={`flex items-center justify-between p-3 rounded-xl border ${
+                                alarm.active
+                                  ? "bg-red-50 border-red-200"
+                                  : "bg-slate-50 border-slate-100 opacity-60"
+                              }`}
+                            >
+                              <div>
+                                <span className="font-bold text-slate-800">
+                                  {alarm.time}
+                                </span>
+                                <span className="ml-2 text-sm text-slate-600">
+                                  {alarm.label}
+                                </span>
+                              </div>
+                              <button onClick={() => deleteAlarm(alarm.id)}>
+                                <Trash2 className="w-4 h-4 text-red-400" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 flex gap-2">
+                          <input
+                            type="time"
+                            id="alarmTime"
+                            className="bg-slate-50 border rounded-xl px-3 py-2 outline-none focus:border-amber-500"
+                          />
+                          <input
+                            type="text"
+                            id="alarmLabel"
+                            className="flex-1 bg-slate-50 border rounded-xl px-3 py-2 outline-none focus:border-amber-500"
+                            placeholder="Başlık..."
+                          />
+                          <button
+                            onClick={() => {
+                              const t =
+                                document.getElementById("alarmTime").value;
+                              const l =
+                                document.getElementById("alarmLabel").value;
+                              if (t && l) {
+                                addAlarm(t, l);
+                                document.getElementById("alarmLabel").value =
+                                  "";
+                              }
+                            }}
+                            className="bg-amber-500 text-white p-2 rounded-xl hover:bg-amber-600"
+                          >
+                            <PlusCircle />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SIVI TAKİBİ */}
+                    {activeWidgets.includes("water") && (
+                      <div className="bg-gradient-to-br from-sky-500 to-blue-600 p-6 rounded-3xl shadow-lg text-white h-[300px]">
+                        <h3 className="font-bold text-lg flex items-center mb-6">
+                          <Droplets className="w-5 h-5 mr-2" /> Sıvı Takibi
+                        </h3>
+                        <div className="grid grid-cols-4 gap-3">
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                            <button
+                              key={num}
+                              onClick={() =>
+                                updateDayData(selectedDate, {
+                                  water: data.water === num ? num - 1 : num,
+                                })
+                              }
+                              className={`aspect-square rounded-xl flex items-center justify-center transition ${
+                                num <= data.water
+                                  ? "bg-white text-blue-600 shadow"
+                                  : "bg-blue-700/50"
+                              }`}
+                            >
+                              <Droplets
+                                className="w-5 h-5"
+                                fill={
+                                  num <= data.water ? "currentColor" : "none"
+                                }
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* YEMEK PLANI */}
+                    {activeWidgets.includes("meals") && (
+                      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[300px]">
+                        <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
+                          <Utensils className="w-5 h-5 mr-2 text-green-500" />{" "}
+                          Yemek Planı
+                        </h3>
+                        <div className="space-y-3">
+                          {["Kahvaltı", "Öğle", "Akşam"].map((m) => {
+                            const key =
+                              m === "Kahvaltı"
+                                ? "breakfast"
+                                : m === "Öğle"
+                                ? "lunch"
+                                : "dinner";
+                            return (
+                              <div key={key} className="relative">
+                                <span className="absolute left-3 top-3 text-[10px] font-bold text-slate-400 uppercase">
+                                  {m}
+                                </span>
+                                <input
+                                  type="text"
+                                  className="w-full bg-slate-50 border rounded-xl pt-7 pb-2 px-3 text-sm outline-none focus:border-amber-500"
+                                  value={data.meals[key]}
+                                  onChange={(e) =>
+                                    updateDayData(selectedDate, {
+                                      meals: {
+                                        ...data.meals,
+                                        [key]: e.target.value,
+                                      },
+                                    })
+                                  }
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
