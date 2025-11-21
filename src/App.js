@@ -19,14 +19,12 @@ import {
   Utensils,
   Activity,
   Globe,
-  Moon,
-  Sun,
 } from "lucide-react";
 
 const electron = window.require ? window.require("electron") : null;
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 
-// --- DİL YAPILANDIRMASI ---
+// --- DİL AYARLARI ---
 const LANGUAGES = [
   { code: "en", name: "English", flag: "🇺🇸", locale: "en-US" },
   { code: "tr", name: "Türkçe", flag: "🇹🇷", locale: "tr-TR" },
@@ -67,7 +65,6 @@ const TRANSLATIONS = {
     morning: "Breakfast",
     noon: "Lunch",
     evening: "Dinner",
-    alarmSet: "Alarm set for",
     reset: "Reset App",
   },
   tr: {
@@ -94,17 +91,14 @@ const TRANSLATIONS = {
     morning: "Kahvaltı",
     noon: "Öğle",
     evening: "Akşam",
-    alarmSet: "Alarm kuruldu:",
     reset: "Uygulamayı Sıfırla",
   },
-  // ... Diğer diller için varsayılan olarak İngilizce dönecektir
 };
 
-// Yardımcı: Çeviri Al
 const getTrans = (lang, key) =>
   TRANSLATIONS[lang]?.[key] || TRANSLATIONS["en"][key] || key;
 
-// --- TARİH FONKSİYONLARI (DİNAMİK DİL DESTEĞİ) ---
+// --- TARİH YARDIMCILARI ---
 const getMonthName = (monthIndex, langCode) => {
   const locale = LANGUAGES.find((l) => l.code === langCode)?.locale || "en-US";
   return new Date(2025, monthIndex, 1).toLocaleDateString(locale, {
@@ -113,9 +107,7 @@ const getMonthName = (monthIndex, langCode) => {
 };
 
 const getDayName = (dayIndex, langCode) => {
-  // 0 = Pazartesi (Bizim grid düzenimize göre)
   const locale = LANGUAGES.find((l) => l.code === langCode)?.locale || "en-US";
-  // 5 Ocak 1970 Pazartesi idi. Bunu baz alarak gün isimlerini çekiyoruz.
   return new Date(1970, 0, 5 + dayIndex).toLocaleDateString(locale, {
     weekday: "short",
   });
@@ -177,52 +169,35 @@ const LifeFlowApp = () => {
     return () => clearInterval(alarmIntervalRef.current);
   }, []);
 
-  // --- ALARM SİSTEMİ (GÜÇLENDİRİLMİŞ) ---
+  // --- ALARM SİSTEMİ ---
   const startAlarmCheck = () => {
     if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
-
     alarmIntervalRef.current = setInterval(() => {
       const now = new Date();
       const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now
         .getMinutes()
         .toString()
         .padStart(2, "0")}`;
-
-      // LocalStorage'dan en güncel alarm listesini çek
       const currentAlarms = JSON.parse(
         localStorage.getItem("lifeflow_alarms") || "[]"
       );
-      let updated = false;
 
+      let updated = false;
       currentAlarms.forEach((alarm) => {
         if (alarm.active && alarm.time === currentTime) {
-          // Bildirim Gönder
           new Notification("LifeFlow", {
-            body: alarm.label || "⏰ Alarm!",
+            body: alarm.label || "Alarm!",
             icon: "/favicon.ico",
-            silent: false,
           });
-
-          // Ses Çal (Tarayıcı politikaları bazen engelleyebilir ama deneyelim)
-          const audio = new Audio(
-            "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-          );
-          audio
-            .play()
-            .catch((e) =>
-              console.log("Ses çalma hatası (otomatik oynatma kısıtlaması):", e)
-            );
-
-          alarm.active = false; // Alarmı kapat
+          alarm.active = false;
           updated = true;
         }
       });
-
       if (updated) {
         setAlarms(currentAlarms);
         localStorage.setItem("lifeflow_alarms", JSON.stringify(currentAlarms));
       }
-    }, 10000); // 10 saniyede bir kontrol
+    }, 10000);
   };
 
   const updateAlarms = (newAlarms) => {
@@ -260,7 +235,7 @@ const LifeFlowApp = () => {
     saveData({ ...plannerData, [key]: updated });
   };
 
-  // --- PENCERE & AYARLAR ---
+  // --- PENCERE YÖNETİMİ ---
   const handleClose = () => ipcRenderer && ipcRenderer.send("app-close");
   const handleMinimize = () => ipcRenderer && ipcRenderer.send("app-minimize");
   const toggleAutoStart = () =>
@@ -278,7 +253,7 @@ const LifeFlowApp = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm("Reset app? / Uygulama sıfırlansın mı?")) {
+    if (window.confirm("Reset app?")) {
       localStorage.clear();
       window.location.reload();
     }
@@ -294,11 +269,10 @@ const LifeFlowApp = () => {
     }
   };
 
-  // --- EKRAN 1: KURULUM (TAM DİL DESTEĞİ) ---
+  // --- EKRAN 1: KURULUM (ENGLISH DEFAULT) ---
   if (!isSetup) {
     return (
       <div className="h-screen flex flex-col bg-[#0f172a] text-white font-sans select-none">
-        {/* Pencere Çubuğu */}
         <div
           className="h-8 flex justify-end items-center px-4 bg-[#1e293b]"
           style={{ WebkitAppRegion: "drag" }}
@@ -312,7 +286,6 @@ const LifeFlowApp = () => {
             </button>
           </div>
         </div>
-
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-96 p-8 bg-[#1e293b] rounded-2xl shadow-2xl border border-slate-700">
             <div className="text-center mb-6">
@@ -321,12 +294,10 @@ const LifeFlowApp = () => {
               </div>
               <h1 className="text-xl font-bold text-white">LifeFlow</h1>
             </div>
-
             <div className="space-y-4">
-              {/* Dil Seçici */}
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase">
-                  Select Language
+                  Language
                 </label>
                 <div className="grid grid-cols-4 gap-2 mt-1">
                   {LANGUAGES.map((lang) => (
@@ -347,7 +318,6 @@ const LifeFlowApp = () => {
                   {LANGUAGES.find((l) => l.code === language)?.name}
                 </p>
               </div>
-
               <input
                 type="text"
                 value={userName}
@@ -362,11 +332,9 @@ const LifeFlowApp = () => {
                 className="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-3 text-sm outline-none focus:border-amber-500"
                 placeholder={getTrans(language, "keyLabel")}
               />
-
               {error && (
                 <p className="text-red-400 text-xs text-center">{error}</p>
               )}
-
               <button
                 onClick={handleSetup}
                 disabled={!userName || !licenseKey}
@@ -381,14 +349,12 @@ const LifeFlowApp = () => {
     );
   }
 
-  // --- EKRAN 2: WIDGET MODU (YENİ ŞEFFAF TASARIM) ---
+  // --- EKRAN 2: WIDGET ---
   if (viewMode === "widget") {
     const todayKey = `${new Date().getFullYear()}-${new Date().getMonth()}-${new Date().getDate()}`;
     const todayData = getDayData(todayKey);
-
     return (
       <div className="h-screen flex flex-col bg-slate-900/90 backdrop-blur-md text-white border border-white/10 rounded-2xl overflow-hidden font-sans shadow-2xl">
-        {/* Widget Header */}
         <div
           className="h-10 bg-black/20 flex justify-between items-center px-4 cursor-move"
           style={{ WebkitAppRegion: "drag" }}
@@ -403,10 +369,7 @@ const LifeFlowApp = () => {
             </button>
           </div>
         </div>
-
-        {/* Widget Content */}
         <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
-          {/* Todo Listesi */}
           <div className="flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
@@ -419,7 +382,7 @@ const LifeFlowApp = () => {
             <div className="flex-1 bg-black/20 rounded-xl p-2 overflow-y-auto scrollbar-hide space-y-1">
               {todayData.todos.filter((t) => !t.completed).length === 0 && (
                 <div className="h-full flex items-center justify-center text-slate-500 text-xs italic">
-                  Boş...
+                  ...
                 </div>
               )}
               {todayData.todos
@@ -427,18 +390,16 @@ const LifeFlowApp = () => {
                 .map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center text-xs bg-white/5 p-2 rounded-lg border-l-2 border-amber-500 hover:bg-white/10 transition cursor-default"
+                    className="flex items-center text-xs bg-white/5 p-2 rounded-lg border-l-2 border-amber-500"
                   >
                     <span className="truncate">{t.text}</span>
                   </div>
                 ))}
             </div>
           </div>
-
-          {/* Hızlı Not */}
           <div className="h-24">
             <textarea
-              className="w-full h-full bg-black/20 rounded-xl p-3 text-xs resize-none outline-none focus:ring-1 focus:ring-amber-500/50 border border-transparent text-slate-300 placeholder-slate-600"
+              className="w-full h-full bg-black/20 rounded-xl p-3 text-xs resize-none outline-none focus:ring-1 focus:ring-amber-500/50 border border-transparent text-slate-300"
               placeholder={getTrans(language, "phNote")}
               value={todayData.notes}
               onChange={(e) =>
@@ -457,18 +418,17 @@ const LifeFlowApp = () => {
       {/* AYARLAR MODALI */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
-          <div className="bg-white w-96 rounded-2xl shadow-2xl p-6 animate-fadeIn">
+          <div className="bg-white w-96 rounded-2xl shadow-2xl p-6 animate-fadeIn border border-slate-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-lg text-slate-800">
                 {getTrans(language, "settings")}
               </h3>
               <button onClick={() => setShowSettings(false)}>
-                <X className="w-5 h-5 text-slate-400" />
+                <X className="w-5 h-5 text-slate-400 hover:text-red-500" />
               </button>
             </div>
 
             <div className="space-y-6">
-              {/* Dil Değiştirme */}
               <div>
                 <label className="text-xs font-bold text-slate-400 block mb-2 uppercase">
                   Language
@@ -493,7 +453,6 @@ const LifeFlowApp = () => {
                 </div>
               </div>
 
-              {/* Modüller */}
               <div>
                 <label className="text-xs font-bold text-slate-400 block mb-2 uppercase">
                   {getTrans(language, "widgets")}
@@ -573,6 +532,7 @@ const LifeFlowApp = () => {
       >
         <div className="text-xs font-bold text-slate-400 flex items-center gap-2">
           <div className="w-2 h-2 bg-amber-500 rounded-full"></div> LIFEFLOW
+          PREMIUM
         </div>
         <div className="flex gap-4" style={{ WebkitAppRegion: "no-drag" }}>
           <button onClick={handleMinimize}>
@@ -599,7 +559,6 @@ const LifeFlowApp = () => {
             </div>
           </div>
 
-          {/* MENÜ BUTONLARI */}
           <div className="space-y-1">
             <button
               onClick={() => setCurrentView("dashboard")}
@@ -682,7 +641,7 @@ const LifeFlowApp = () => {
                     ? `${selectedDate.split("-")[2]} ${getMonthName(
                         parseInt(selectedDate.split("-")[1]),
                         language
-                      )} ${selectedDate.split("-")[0]}`
+                      )}`
                     : ""}
                 </h1>
               </div>
@@ -696,7 +655,7 @@ const LifeFlowApp = () => {
           </header>
 
           <main className="flex-1 overflow-y-auto p-8">
-            {/* 1. YILLIK GÖRÜNÜM */}
+            {/* 1. DASHBOARD */}
             {currentView === "dashboard" && (
               <div className="grid grid-cols-3 md:grid-cols-4 gap-4">
                 {Array.from({ length: 12 }).map((_, idx) => (
@@ -717,7 +676,7 @@ const LifeFlowApp = () => {
               </div>
             )}
 
-            {/* 2. AY GÖRÜNÜMÜ */}
+            {/* 2. TAKVİM */}
             {currentView === "month" && (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
                 <div className="grid grid-cols-7 mb-4">
@@ -741,8 +700,8 @@ const LifeFlowApp = () => {
                       currentYear,
                       currentMonth,
                       1
-                    ).getDay(); // 0=Pazar
-                    const start = firstDay === 0 ? 6 : firstDay - 1; // Pzt=0 yapmak için
+                    ).getDay();
+                    const start = firstDay === 0 ? 6 : firstDay - 1;
                     const grid = [];
                     for (let i = 0; i < start; i++) grid.push(null);
                     for (let i = 1; i <= daysInMonth; i++) grid.push(i);
@@ -875,7 +834,7 @@ const LifeFlowApp = () => {
                       </div>
                     )}
 
-                    {/* HATIRLATICILAR (DÜZELTİLEN KISIM) */}
+                    {/* HATIRLATICILAR */}
                     {activeWidgets.includes("alarms") && (
                       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[400px] flex flex-col">
                         <h3 className="font-bold text-lg flex items-center text-slate-700 mb-4">
@@ -883,11 +842,6 @@ const LifeFlowApp = () => {
                           {getTrans(language, "alarms")}
                         </h3>
                         <div className="flex-1 overflow-y-auto space-y-2">
-                          {alarms.length === 0 && (
-                            <p className="text-sm text-slate-400 italic text-center mt-10">
-                              Alarm yok.
-                            </p>
-                          )}
                           {alarms.map((alarm) => (
                             <div
                               key={alarm.id}
@@ -898,15 +852,14 @@ const LifeFlowApp = () => {
                               }`}
                             >
                               <div>
-                                <span className="font-bold text-slate-800 text-lg">
-                                  {alarm.time}
-                                </span>
-                                <span className="ml-2 text-sm text-slate-600">
-                                  {alarm.label}
+                                <span className="font-bold text-slate-800">
+                                  {alarm.time}{" "}
+                                  <span className="font-normal text-slate-600 text-sm">
+                                    - {alarm.label}
+                                  </span>
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
-                                {/* Aktif/Pasif Butonu */}
                                 <button
                                   onClick={() =>
                                     updateAlarms(
@@ -986,7 +939,7 @@ const LifeFlowApp = () => {
                       </div>
                     )}
 
-                    {/* SIVI TAKİBİ (DÜZELTİLEN TASARIM) */}
+                    {/* SIVI TAKİBİ */}
                     {activeWidgets.includes("water") && (
                       <div className="bg-gradient-to-br from-sky-500 to-blue-600 p-6 rounded-3xl shadow-lg text-white">
                         <div className="flex justify-between items-center mb-6">
